@@ -1,0 +1,2 @@
+# payroll outputs contain employee salary data - keep out of git
+payroll_recon/*.xlsx
