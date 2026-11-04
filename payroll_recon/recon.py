@@ -53,20 +53,24 @@ def load_bank(paths):
     return b.drop_duplicates(subset=['name','amt','narr','date']).reset_index(drop=True)  # same file uploaded twice
 def main():
     ap=argparse.ArgumentParser(); ap.add_argument('summary'); ap.add_argument('bank',nargs='+'); ap.add_argument('-o','--out',default='payroll_reconciliation.xlsx')
-    ap.add_argument('--tab',action='append',default=[]); a=ap.parse_args()
+    ap.add_argument('--tab',action='append',default=[]); ap.add_argument('--extra',help='CSV of payments made outside the bank files: month,employee,amount,note'); a=ap.parse_args()
     for t in a.tab: k,v=t.split('=',1); TABS[k]=v
     S=load_summary(a.summary); B=load_bank(a.bank)
     known=sorted(S.key.unique())
     # assign each bank line to a pay month: the summary month it relates to = month named in narration, else file month
+    if a.extra:
+        E=pd.read_csv(a.extra); E=pd.DataFrame(dict(file='manual: '+E.note.fillna('').astype(str),name=E.employee,amt=E.amount.astype(float),narr='Paid separately',date=None,man=E.month))
+        B=pd.concat([B,E],ignore_index=True)
+    if 'man' not in B: B['man']=None
     B['key']=B.name.map(lambda n:match(n,known))
     B['month']=[month_of(n,None) for n in B.narr]
     # narration mismatch check: date-based expected month = month before payment date
     def pay_month(dt):
         d=pd.to_datetime(dt,dayfirst=True); i=(d.month-2)%12   # paid in Jun -> May salary
         return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][i]
-    B['exp_month']=B.date.map(pay_month)
+    B['exp_month']=[pay_month(d) if d else None for d in B.date]
     # May's late file (22-Jun) and normal salary paid next month => use expected month from date
-    B['month']=B.exp_month
+    B['month']=[m if isinstance(m,str) else e for m,e in zip(B.man,B.exp_month)]
     ex=[]; det=[]
     for m in MONTHS:
         sm=S[S.month==m]; bm=B[B.month==m]
@@ -81,7 +85,7 @@ def main():
                 ex.append([m,b.name.iloc[0],'Paid but not in summary',paid])
         for _,r in bm[bm.key.isna()].iterrows(): ex.append([m,r['name'],'Bank name not matched to any employee',r.amt])
         for _,r in bm.iterrows():
-            if not re.search(r'conveyance',str(r.narr),re.I) and month_of(r.narr,r.exp_month)!=r.exp_month:
+            if not str(r.file).startswith('manual') and not re.search(r'conveyance',str(r.narr),re.I) and month_of(r.narr,r.exp_month)!=r.exp_month:
                 ex.append([m,r['name'],f'Narration "{r.narr}" does not match pay month {r.exp_month}',r.amt])
     D=pd.DataFrame(det,columns=['Month','Employee','Salary','Days payable','Salary payable','PT','Loan','Net payable','SVSG share (expected via this bank file)','Finstrat share','Paid via bank file','Entity'])
     # rules
