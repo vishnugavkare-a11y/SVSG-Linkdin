@@ -124,6 +124,19 @@ def main():
     ws=wb.create_sheet('Detail'); ws.append(list(D.columns)+['Variance (paid - SVSG share, or - net if no split)'])
     for i,row in enumerate(D.itertuples(index=False),2):
         ws.append([None if (isinstance(v,float) and pd.isna(v)) else v for v in row]+[f'=IF(I{i}="",IF(H{i}="","",K{i}-H{i}),K{i}-I{i})'])
+    ws=wb.create_sheet('Employee-wise')
+    cols=['Employee','Month','Days payable','Monthly salary','Salary payable','PT','Loan','Net salary','SVSG share','Finstrat share','Paid via SVSG bank','Entity']
+    ws.append(cols)
+    src=['Employee','Month','Days payable','Salary','Salary payable','PT','Loan','Net payable','SVSG share (expected via this bank file)','Finstrat share','Paid via bank file','Entity']
+    E2=D.copy(); E2['k']=E2.Employee.map(lambda n:norm(ALIAS.get(norm(n),n)))
+    for k in sorted(E2.k.unique()):
+        g=E2[E2.k==k]; g=g.sort_values('Month',key=lambda s:s.map(MONTHS.index)); first=ws.max_row+1
+        for _,r in g.iterrows():
+            ws.append([None if (isinstance(r[c],float) and pd.isna(r[c])) else r[c] for c in src])
+        last=ws.max_row; nm=g.Employee.iloc[0]
+        ws.append([f'{nm} - TOTAL','',f'=SUM(C{first}:C{last})','']+[f'=SUM({c}{first}:{c}{last})' for c in 'EFGHIJK'])
+        for c in ws[ws.max_row]: c.font=Font(bold=True); c.fill=PatternFill('solid',fgColor='D9E1F2')
+        ws.append([])
     ws=wb.create_sheet('Exceptions'); ws.append(list(X.columns))
     for r in X.itertuples(index=False): ws.append([None if (isinstance(v,float) and pd.isna(v)) else v for v in r])
     ws=wb.create_sheet('Bank lines'); ws.append(['Pay month','Employee (bank name)','Matched to','Amount','Narration','Date','Source file'])
